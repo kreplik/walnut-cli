@@ -260,9 +260,7 @@ def trace_command(args):
 
 def simulate_command(args):
     """Execute the simulate command."""
-    if args.interactive:
-        interactive_mode(args)
-        return 0
+    
 
     # If --raw-data is provided, do not provide function_signature or function_args
     if getattr(args, 'raw_data', None):
@@ -371,6 +369,10 @@ def simulate_command(args):
             for abi_file in Path(".").glob("*.abi"):
                 tracer.load_abi(str(abi_file))
                 break
+
+    if args.interactive:
+        interactive_mode(args)
+        return 0
     # If raw_data is provided, use it directly as calldata
     if getattr(args, 'raw_data', None):
         calldata = args.raw_data
@@ -576,6 +578,7 @@ def interactive_mode(args):
                 keep_fork=args.keep_fork,
                 reuse_fork=args.reuse_fork,
                 fork_port=args.fork_port,
+                from_account=args.from_addr,
             )
             contract_address = session.contract_address
             ethdebug_dir = str(session.debug_dir)
@@ -591,7 +594,52 @@ def interactive_mode(args):
         if args.constructor_args:
             print(error("Warning: --constructor-args ignored when using --contract-address (contract is already deployed)."))
         contract_address = args.contract_address
-        ethdebug_dir = args.ethdebug_dir[0] if isinstance(args.ethdebug_dir, list) else args.ethdebug_dir
+        
+        # Handle multiple ethdebug directories for multi-contract mode
+        if len(args.ethdebug_dir) > 1:
+            # Multi-contract mode
+            multi_parser = MultiContractETHDebugParser()
+            
+            # Load from ethdebug directories
+            for ethdebug_spec in args.ethdebug_dir:
+                # Parse address:path format
+                address = None
+                name = None
+                path = ethdebug_spec
+                parts = ethdebug_spec.split(':', 2)
+                if len(parts) == 3:
+                    address, name, path = parts
+                elif len(parts) == 2:
+                    address, path = parts
+                try:
+                    if address and name:
+                        multi_parser.load_contract(address, path, name)
+                    elif address:
+                        multi_parser.load_contract(address, path)
+                    else:
+                        # Try to load from deployment.json in the directory
+                        deployment_file = Path(ethdebug_spec) / "deployment.json"
+                        if deployment_file.exists():
+                            multi_parser.load_from_deployment(deployment_file)
+                        else:
+                            print(f"Warning: No deployment.json found in {ethdebug_spec}, skipping...\n")
+                except Exception as e:
+                    print(f"Error loading contract {address or ''} from {path}: {e}\n")
+                    sys.exit(1)
+            
+            # Find the primary contract's ethdebug directory
+            primary_contract = multi_parser.get_contract_at_address(contract_address)
+            if primary_contract:
+                ethdebug_dir = str(primary_contract.debug_dir)
+                abi_path = str(primary_contract.debug_dir / f"{primary_contract.name}.abi")
+            else:
+                print(error(f"Error: Contract {contract_address} not found in any of the provided ethdebug directories."))
+                return 1
+        else:
+            # Single contract mode
+            ethdebug_dir = args.ethdebug_dir[0] if isinstance(args.ethdebug_dir, list) else args.ethdebug_dir
+            multi_parser = None
+            abi_path = None
     else:
         print(error("Either --contract-file or --contract-address required"))
         return 1
@@ -601,10 +649,12 @@ def interactive_mode(args):
         contract_address=str(contract_address),
         rpc_url=(session.rpc_url if session else args.rpc_url),
         ethdebug_dir=ethdebug_dir,
+        multi_contract_parser=multi_parser if 'multi_parser' in locals() else None,
         function_name=getattr(args, 'function_signature', None),
         function_args=getattr(args, 'function_args', []),
         interactive_mode=True,
-        abi_path=abi_path
+        abi_path=getattr(args, 'abi_path', None),
+        from_addr=getattr(args, 'from_addr', None)
     )
 
     # Baseline snapshot (unless disabled)
@@ -650,9 +700,8 @@ def main():
     
     # Create the 'simulate' subcommand
     simulate_parser = subparsers.add_parser('simulate', help='Simulate and debug an Ethereum transaction')
-    interactive_group = simulate_parser.add_mutually_exclusive_group(required=True)
-    interactive_group.add_argument('--from', dest='from_addr', help='Sender address')
-    interactive_group.add_argument('--interactive', '-i', action='store_true', help='Start interactive debugger after simulation')
+    simulate_parser.add_argument('--from', dest='from_addr', required=True, help='Sender address')
+    simulate_parser.add_argument('--interactive', '-i', action='store_true', help='Start interactive debugger after simulation')
 
     # Single positional argument that can be either contract address or contract file
     simulate_parser.add_argument('contract_address', nargs='?', help='Contract address (0x...) or path to Solidity source file (.sol)')
@@ -676,7 +725,7 @@ def main():
     simulate_parser.add_argument('--save-config', action='store_true', help='Save configuration to walnut.config.yaml')
     simulate_parser.add_argument('--verify-version', action='store_true', help='Verify solc version supports ETHDebug and exit')
     simulate_parser.add_argument('--no-cache', action='store_true', default=False, help='Enable deployment cache')
-    simulate_parser.add_argument('--cache-dir', default='.walnut_cache', help='Cache directory')
+    simulate_parser.add_argument('--cache-dir', default='.soldb_cache', help='Cache directory')
     simulate_parser.add_argument('--fork-url', help='Upstream RPC URL to fork (launch anvil)')
     simulate_parser.add_argument('--fork-block', type=int, help='Specific block number to fork')
     simulate_parser.add_argument('--fork-port', type=int, default=8545, help='Local fork port (default: 8545)')

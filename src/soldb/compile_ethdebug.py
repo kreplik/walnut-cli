@@ -213,7 +213,7 @@ def compile_ethdebug_run(
         
 
     if save_config:
-        config.save_to_walnut_config()
+        config.save_to_soldb_config()
         return {"mode": "save_config", "saved": True}
 
     if not Path(contract_file).exists():

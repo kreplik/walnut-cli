@@ -123,6 +123,14 @@ class TransactionTracer:
         self._initial_snapshot_id: Optional[str] = None
         self._last_snapshot_id: Optional[str] = None
 
+    def is_contract_deployed(self, address: str) -> bool:
+        """Check if a contract is deployed at the given address."""
+        checksum_address = to_checksum_address(address)
+        code = self.w3.eth.get_code(checksum_address)
+        if len(code) <= 0:
+            return False
+        return True
+
     def snapshot_state(self) -> Optional[str]:
         """Take an EVM snapshot (Hardhat/Anvil/Ganache). Returns snapshot id or None if unsupported."""
         try:
@@ -156,54 +164,6 @@ class TransactionTracer:
             if not self.quiet_mode:
                 print(warning("RPC does not support evm_revert"))
             return False
-
-    def _encode_function_call(self, function_name: str, args: list) -> str:
-        """Encode calldata for a loaded ABI function by name."""
-        # Find ABI item
-        abi_item = None
-        for sel, item in self.function_abis.items():
-            if item.get("name") == function_name:
-                if len(item.get("inputs", [])) == len(args):
-                    abi_item = item
-                    break
-        if not abi_item:
-            raise ValueError(f"Function {function_name}({len(args)} args) not found in loaded ABI")
-        types = [self.format_abi_type(inp) for inp in abi_item.get("inputs", [])]
-        # Basic normalization
-        norm_args = []
-        for val, typ in zip(args, types):
-            if typ.startswith("uint") or typ.startswith("int"):
-                norm_args.append(int(val))
-            elif typ == "address":
-                norm_args.append(Web3.to_checksum_address(val))
-            else:
-                norm_args.append(val)
-        # selector
-        signature = f"{abi_item['name']}({','.join(types)})"
-        selector = keccak(text=signature)[:4].hex()
-        encoded_args = abi_encode(types, norm_args).hex()
-        return "0x" + selector + encoded_args
-
-    def simulate_function(self, contract_address: str, function_name: str, args: list,
-                          from_addr: Optional[str] = None, value: int = 0,
-                          block: Optional[int] = None) -> TransactionTrace:
-        """
-        High-level helper: encode and simulate a function call using debug_traceCall.
-        """
-        if not from_addr:
-            # pick first unlocked account if available
-            try:
-                from_addr = self.w3.eth.accounts[0]
-            except Exception:
-                raise RuntimeError("No from address provided and no local accounts available")
-        calldata = self._encode_function_call(function_name, args)
-        return self.simulate_call_trace(
-            to=contract_address,
-            from_=from_addr,
-            calldata=calldata,
-            block=block,
-            value=value
-        )
     
     def _log(self, message: str, level: str = "info"):
         """Log a message to stderr if not in quiet mode."""

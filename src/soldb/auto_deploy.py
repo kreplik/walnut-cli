@@ -38,6 +38,7 @@ class AutoDeployDebugger:
         keep_fork: bool = False,
         reuse_fork: bool = False,
         fork_port: int = 8545,
+        from_account: Optional[str] = None,
     ):
         self.contract_path = Path(contract_file)
         if not self.contract_path.exists():
@@ -86,6 +87,7 @@ class AutoDeployDebugger:
         self.keep_fork = keep_fork
         self.reuse_fork = reuse_fork
         self.fork_port = fork_port
+        self.from_account = from_account
         # connect to existing fork or launch a new one (if configured)
         self.connect_or_launch_fork()
         # workflow
@@ -293,12 +295,42 @@ class AutoDeployDebugger:
         ctor_inputs = self._get_constructor_inputs(abi)
         ctor_args = self._parse_constructor_args(self.constructor_args, ctor_inputs)
 
-        deployer = w3.eth.accounts[0]
+        # Use provided from_account or fallback to first available account
+        deployer = self.from_account
+            
         Contract = w3.eth.contract(abi=abi, bytecode=bytecode)
         tx_hash = Contract.constructor(*ctor_args).transact({'from': deployer})
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         self.contract_address = receipt.contractAddress
         print(info(f"✓ Deployed {self.contract_name} at {self.contract_address}"))
+        
+        # Create deployment.json in ethdebug directory
+        self._create_deployment_json(receipt)
+
+    def _create_deployment_json(self, receipt):
+        """Create deployment.json file with deployment information."""
+        ethdebug_dir = Path(self.debug_output_dir)
+        deployment_path = ethdebug_dir / "deployment.json"
+        
+        # Follow the established deployment.json format
+        deployment_data = {
+            "contract": self.contract_name,
+            "address": receipt.contractAddress.lower(),
+            "transaction": receipt.transactionHash.hex(),
+            "network": self.rpc_url,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "ethdebug": {
+                "enabled": True,
+                "main_file": "ethdebug.json",
+                "contract_file": f"{self.contract_name}_ethdebug.json",
+                "runtime_file": f"{self.contract_name}_ethdebug-runtime.json"
+            }
+        }
+        
+        with open(deployment_path, 'w') as f:
+            json.dump(deployment_data, f, indent=2)
+        
+        print(info(f"✓ Created deployment.json at {deployment_path}"))
 
     # ---------- Constructor arg parsing ----------
     def _get_constructor_inputs(self, abi: List[dict]) -> List[dict]:
