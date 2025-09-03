@@ -1,0 +1,15 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Module",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "soldb.main",
+            "args": ["simulate", "examples/Counter.sol", "increment()", "--from", "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512", "--ethdebug-dir", "./out/Counter"]
+        }
+    ]
+}

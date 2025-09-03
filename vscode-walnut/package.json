@@ -1,0 +1,69 @@
+{
+  "name": "wn",
+  "displayName": "WN Walnut Debugger",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "onLanguage:solidity",
+    "onDebug",
+    "onCommand:wn.walnut"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "wn.walnut",
+        "title": "Walnut Debugger"
+      }
+    ],
+    "configuration": {
+      "title": "Walnut Debugger",
+      "properties": {
+        "walnut.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to Python executable (e.g., 'python3', '/opt/homebrew/bin/python3', or 'C:\\Python39\\python.exe')"
+        },
+        "walnut.walnutPath": {
+          "type": "string",
+          "default": "/Users/adamnieslanik/soldb",
+          "description": "Path to walnut-cli directory (e.g., '/Users/username/soldb'). Leave empty to auto-detect from workspace folders containing walnut-cli project files."
+        }
+      }
+    },
+    "debuggers": [
+      {
+        "type": "walnut",
+        "label": "Walnut",
+        "configurationAttributes": {
+          "launch": {
+            "properties": {
+              "contractFile": {
+                "type": "string",
+                "description": "Solidity contract file"
+              },
+              "port": {
+                "type": "number",
+                "description": "DAP server port",
+                "default": 4711
+              },
+              "function": {
+                "type": "string",
+                "description": "Function to debug"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  }
+}
